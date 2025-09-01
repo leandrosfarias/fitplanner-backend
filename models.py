@@ -2,7 +2,7 @@ from sqlmodel import Field, SQLModel, Relationship
 from uuid import UUID, uuid4
 from typing import List, Optional
 from enum import Enum
-from datetime import datetime
+from datetime import date, datetime
 
 
 class MuscleGroup(str, Enum):
@@ -39,13 +39,36 @@ class Coach(SQLModel, table=True):
     training_plans: List["TrainingPlan"] = Relationship(back_populates="coach")
 
 
+class StudentCreate(SQLModel):
+    complete_name: str = Field(max_length=255)
+    email: str = Field(max_length=255)
+    phone: Optional[str] = Field(max_length=255)
+    birth_date: date
+    observations: Optional[str] = Field(default=None, max_length=255)
+    weight_kg: Optional[float] = Field(default=None)
+    height_cm: Optional[float] = Field(default=None)
+    arm_circumference_cm: Optional[float] = Field(default=None)
+    leg_circumference_cm: Optional[float] = Field(default=None)
+    chest_circumference_cm: Optional[float] = Field(default=None)
+
+
 class Student(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     complete_name: str = Field(max_length=255)
-    email: Optional[str] = Field(max_length=255)
+    email: str = Field(max_length=255)
     password_hash: str = Field(max_length=255)
     phone: Optional[str] = Field(max_length=255)
     coach_id: UUID = Field(foreign_key="coach.id")
+
+    weight_kg: Optional[float] = Field(default=None)
+    height_cm: Optional[float] = Field(default=None)
+    arm_circumference_cm: Optional[float] = Field(default=None)
+    leg_circumference_cm: Optional[float] = Field(default=None)
+    chest_circumference_cm: Optional[float] = Field(default=None)
+
+    birth_date: date
+    created_at: datetime = Field(default_factory=datetime.now)
+    observations: Optional[str] = Field(default=None, max_length=255)
 
     coach: Coach = Relationship(back_populates="students")
     training_plans: List["TrainingPlan"] = Relationship(back_populates="student")
