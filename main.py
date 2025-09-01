@@ -8,8 +8,8 @@ import models
 from models import Coach
 from sqlmodel import SQLModel, Session, select
 
-from DbManager import engine
-from auth import create_access_token, verify_password, get_password_hash
+from DbManager import engine, get_coach_by_id
+from auth import create_access_token, verify_password, get_password_hash, get_current_user_id
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -64,6 +64,14 @@ async def create_coach(coach: models.CoachCreate,
         raise HTTPException(status_code=400, detail=f"Failed to create coach: {e}")
 
 
+@app.get("/coach/{coach_id}")
+async def get_coach(coach_id: str, session: Session = Depends(get_session)):
+    coach = await get_coach_by_id(coach_id)
+    if not coach:
+        raise HTTPException(status_code=404, detail="Coach not found")
+    return coach
+
+
 @app.post("/coach/login/")
 async def perform_login_coach(form_data: OAuth2PasswordRequestForm = Depends(),
                               session: Session = Depends(get_session)):
@@ -81,3 +89,30 @@ async def perform_login_coach(form_data: OAuth2PasswordRequestForm = Depends(),
             "access_token": access_token,
             "coach_id": str(coach.id)
         }
+
+
+@app.post("/student")
+def create_student(studentCreate: models.StudentCreate,
+                   session: Session = Depends(get_session),
+                   current_coach_id: str = Depends(get_current_user_id)):
+    if not current_coach_id:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+    db_student = select(models.Student).where(models.Student.complete_name == studentCreate.complete_name)
+    existing_student = session.exec(db_student).first()
+    if existing_student:
+        raise HTTPException(status_code=400, detail="Student already exists")
+    students_dict = studentCreate.dict()
+    has_pwd = get_password_hash(str(studentCreate.birth_date.year))
+    students_dict["password_hash"] = has_pwd
+    students_dict["coach_id"] = current_coach_id
+    db_student = models.Student(**students_dict)
+    try:
+        session.add(db_student)
+        session.commit()
+        session.refresh(db_student)
+        return db_student.dict(exclude={"password_hash", "coach_id"})
+    except Exception as e:
+        session.rollback()
+        print(f"Error creating student: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to create student: {e}")
