@@ -5,6 +5,7 @@ from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
+from DbManager import get_coach_by_id
 
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -17,7 +18,7 @@ ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/coach/login/")
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -40,8 +41,14 @@ async def get_current_user_id(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
+        print("User ID:", user_id)
         if user_id is None:
             raise credentials_exception
+        if user_id is not None:
+            coach_id = await get_coach_by_id(user_id)
+            print("Coach ID:", coach_id)
+            if coach_id is None:
+                raise credentials_exception
     except JWTError:
         raise credentials_exception
     return user_id
