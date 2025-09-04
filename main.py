@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from typing import List
 
 from passlib.context import CryptContext
 from fastapi import FastAPI, HTTPException, status, Depends
@@ -10,6 +11,7 @@ from sqlmodel import SQLModel, Session, select
 
 from DbManager import engine, get_coach_by_id
 from auth import create_access_token, verify_password, get_password_hash, get_current_user_id
+from fastapi.middleware.cors import CORSMiddleware
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -35,6 +37,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+origins = [
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_session() -> Session:
@@ -75,19 +89,25 @@ async def get_coach(coach_id: str, session: Session = Depends(get_session)):
 @app.post("/coach/login/")
 async def perform_login_coach(form_data: OAuth2PasswordRequestForm = Depends(),
                               session: Session = Depends(get_session)):
-    username = form_data.username
+    email = form_data.username
     password = form_data.password
 
     coach: Coach | None = session.exec(
             select(Coach)
-            .where(Coach.user_name == username)
+            .where(Coach.email == email)
         ).first()
-    print('Coach -> ', coach)
+
+    if coach is None:
+        print('Coach -> ', coach)
+        raise HTTPException(status_code=404, detail="Invalid email or password")
+
     if coach and verify_password(password, coach.password_hash):
         access_token = create_access_token(data={"sub": str(coach.id)})
         return {
             "access_token": access_token,
-            "coach_id": str(coach.id)
+            "coach_id": str(coach.id),
+            "email": coach.email,
+            "username": coach.user_name
         }
 
 
@@ -116,3 +136,15 @@ def create_student(studentCreate: models.StudentCreate,
         session.rollback()
         print(f"Error creating student: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to create student: {e}")
+
+
+@app.get("/students", response_model=List[models.Student])
+def get_students(session: Session = Depends(get_session),
+                 current_coach_id: str = Depends(get_current_user_id)):
+    if not current_coach_id:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+    students = session.exec(
+        select(models.Student).where(models.Student.coach_id == current_coach_id)
+    ).all()
+    return students
