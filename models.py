@@ -19,6 +19,12 @@ class MuscleGroup(str, Enum):
     DELTOIDS = "deltoids"
 
 
+class Gender(str, Enum):
+    MALE = "M"
+    FEMALE = "F"
+    OTHER = "O"
+
+
 class CoachCreate(SQLModel):
     complete_name: str = Field(max_length=255)
     user_name: str = Field(max_length=255)
@@ -50,6 +56,7 @@ class StudentCreate(SQLModel):
     arm_circumference_cm: Optional[float] = Field(default=None)
     leg_circumference_cm: Optional[float] = Field(default=None)
     chest_circumference_cm: Optional[float] = Field(default=None)
+    gender: Optional[Gender] = Field(default=None)
 
 
 class Student(SQLModel, table=True):
@@ -65,10 +72,11 @@ class Student(SQLModel, table=True):
     arm_circumference_cm: Optional[float] = Field(default=None)
     leg_circumference_cm: Optional[float] = Field(default=None)
     chest_circumference_cm: Optional[float] = Field(default=None)
-
+    gender: Optional[Gender] = Field(default=None)
     birth_date: date
     created_at: datetime = Field(default_factory=datetime.now)
     observations: Optional[str] = Field(default=None, max_length=255)
+    status: Optional[str] = Field(default="active", max_length=50)
 
     coach: Coach = Relationship(back_populates="students")
     training_plans: List["TrainingPlan"] = Relationship(back_populates="student")
