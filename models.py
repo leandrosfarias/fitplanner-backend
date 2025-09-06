@@ -77,10 +77,17 @@ class Student(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
     observations: Optional[str] = Field(default=None, max_length=255)
     status: Optional[str] = Field(default="active", max_length=50)
+    hasTrainingPlan: bool = Field(default=False)
 
     coach: Coach = Relationship(back_populates="students")
     training_plans: List["TrainingPlan"] = Relationship(back_populates="student")
     training_performances: List["TrainingPerformance"] = Relationship(back_populates="student")
+
+
+class ExerciseCreate(SQLModel):
+    name: str = Field(max_length=255)
+    description: Optional[str] = Field(max_length=255)
+    muscle_group: MuscleGroup = Field(index=True)
 
 
 class Exercise(SQLModel, table=True):
@@ -88,6 +95,7 @@ class Exercise(SQLModel, table=True):
     name: str = Field(index=True, max_length=255, unique=True)
     description: Optional[str] = Field(max_length=255)
     muscle_group: MuscleGroup = Field(index=True)
+    coach_id: UUID = Field(foreign_key="coach.id")
 
     training_exercise: List["TrainingExercise"] = Relationship(back_populates="exercise")
     training_performances: List["TrainingPerformance"] = Relationship(back_populates="exercise")

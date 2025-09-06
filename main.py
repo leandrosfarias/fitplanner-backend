@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import List
 
 from passlib.context import CryptContext
@@ -56,7 +57,7 @@ def get_session() -> Session:
         yield session
 
 
-@app.post("/coach/", status_code=status.HTTP_201_CREATED)
+@app.post("/coach/", tags=["coach"], status_code=status.HTTP_201_CREATED)
 async def create_coach(coach: models.CoachCreate,
                        session: Session = Depends(get_session)):
     hashed_password = get_password_hash(coach.password)
@@ -78,7 +79,7 @@ async def create_coach(coach: models.CoachCreate,
         raise HTTPException(status_code=400, detail=f"Failed to create coach: {e}")
 
 
-@app.get("/coach/{coach_id}")
+@app.get("/coach/{coach_id}", tags=["coach"])
 async def get_coach(coach_id: str, session: Session = Depends(get_session)):
     coach = await get_coach_by_id(coach_id)
     if not coach:
@@ -86,7 +87,11 @@ async def get_coach(coach_id: str, session: Session = Depends(get_session)):
     return coach
 
 
-@app.post("/coach/login/")
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
+@app.post("/coach/login/", tags=["coach"])
 async def perform_login_coach(form_data: OAuth2PasswordRequestForm = Depends(),
                               session: Session = Depends(get_session)):
     email = form_data.username
@@ -102,16 +107,22 @@ async def perform_login_coach(form_data: OAuth2PasswordRequestForm = Depends(),
         raise HTTPException(status_code=404, detail="Invalid email or password")
 
     if coach and verify_password(password, coach.password_hash):
-        access_token = create_access_token(data={"sub": str(coach.id)})
+        access_token = create_access_token(data={"sub": str(coach.id)},
+                                           expires_delta=timedelta(
+                                               minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+        refresh_token = create_access_token(data={"sub": str(coach.id)},
+                                            expires_delta=timedelta(
+                                                days=REFRESH_TOKEN_EXPIRE_DAYS))
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "coach_id": str(coach.id),
             "email": coach.email,
             "username": coach.user_name
         }
 
 
-@app.post("/student")
+@app.post("/student", tags=["student"])
 def create_student(studentCreate: models.StudentCreate,
                    session: Session = Depends(get_session),
                    current_coach_id: str = Depends(get_current_user_id)):
@@ -138,13 +149,62 @@ def create_student(studentCreate: models.StudentCreate,
         raise HTTPException(status_code=400, detail=f"Failed to create student: {e}")
 
 
-@app.get("/students", response_model=List[models.Student])
+@app.get("/students", tags=["student"], response_model=List[models.Student])
 def get_students(session: Session = Depends(get_session),
                  current_coach_id: str = Depends(get_current_user_id)):
     if not current_coach_id:
         raise HTTPException(status_code=401, detail="Not authorized")
 
-    students = session.exec(
-        select(models.Student).where(models.Student.coach_id == current_coach_id)
+    students: list[models.Student] | None = session.exec(
+        select(models.Student)
+        .where(models.Student.coach_id == current_coach_id)
     ).all()
     return students
+
+
+@app.get("/student/{student_id}", tags=["student"], response_model=models.Student)
+def get_student_by_id(student_id: str, session: Session = Depends(get_session),
+                      current_coach_id: str = Depends(get_current_user_id)):
+    if not current_coach_id:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+    student = session.exec(
+        select(models.Student)
+        .where(models.Student.id == student_id, models.Student.coach_id == current_coach_id)
+    ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return student
+
+
+@app.post("/exercise", tags=["exercise"])
+def create_exercise(exerciseCreate: models.ExerciseCreate,
+                    session: Session = Depends(get_session),
+                    current_coach_id: str = Depends(get_current_user_id)):
+    if not current_coach_id:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+    db_exercise = models.Exercise(**exerciseCreate.dict(),
+                                  coach_id=current_coach_id)
+    session.add(db_exercise)
+    session.commit()
+    session.refresh(db_exercise)
+    return db_exercise
+
+
+@app.get("/exercises", tags=["exercise"])
+def get_exercises(session: Session = Depends(get_session),
+                  current_coach_id: str = Depends(get_current_user_id)):
+    if not current_coach_id:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+    stm = select(models.Exercise).where(
+        models.Exercise.coach_id == current_coach_id)
+    exercises: List[models.Exercise] = session.exec(stm).all()
+
+    if exercises is None:
+        raise HTTPException(404, detail="Exercises not found")
+
+    return exercises
